@@ -13,7 +13,7 @@ Merges your Github contributions with your Gitlab contributions into a single co
 
 ### Automatic workflow
 
-Nightly [Github Action](.github/workflows/contribution-graph.yml) regenerates the graph and commits it back to this README automatically. You only need to set the `GITLAB_USERNAME` secret in the repo settings.
+Nightly [Github Action](.github/workflows/contribution-graph.yml) regenerates the graph images and commits them automatically. You only need to set the `GITLAB_USERNAME` secret in the repo settings.
 
 ### Manual
 
