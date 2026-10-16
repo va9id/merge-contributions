@@ -9,9 +9,10 @@ Usage:
     python3 merge_contributions.py --github octocat --gitlab johndoe --readme README.md
 
     --svg writes a GitHub-style SVG calendar (plus a -dark.svg sibling);
-    --readme writes that pair next to the README and replaces the README
-    with the <picture> element that shows them. The README holds nothing
-    else, so anything already in it is overwritten.
+    --readme writes that pair next to the README and drops the <picture>
+    element that shows them into a marked section of the README. Only the
+    region between the markers is touched - everything else is preserved,
+    and the section is appended if the markers are not there yet.
 
 GitHub:
     Uses the GraphQL API when GITHUB_TOKEN is set (recommended: exact counts,
@@ -535,16 +536,48 @@ def dark_sibling(path):
     return f"{base}-dark{ext or '.svg'}"
 
 
+# The graph lives between these markers so the rest of the README is left
+# untouched. Keep them on their own lines, exactly as written here.
+README_START = "<!-- merge-contributions:start -->"
+README_END = "<!-- merge-contributions:end -->"
+README_SECTION_RE = re.compile(
+    re.escape(README_START) + r".*?" + re.escape(README_END),
+    re.S,
+)
+
+
 def write_readme(path, light_rel, dark_rel):
-    """The README is the graph and nothing else, so it is simply replaced."""
+    """Write the graph into a marked section of the README, in place.
+
+    Everything outside the ``merge-contributions`` markers is preserved. If
+    the markers are absent (or the file does not exist yet), the section is
+    appended rather than overwriting what is already there.
+    """
+    block = (
+        f"{README_START}\n"
+        "<picture>\n"
+        f'  <source media="(prefers-color-scheme: dark)" srcset="{dark_rel}">\n'
+        f'  <img alt="Contribution graph" src="{light_rel}">\n'
+        "</picture>\n"
+        f"{README_END}"
+    )
+
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            existing = fh.read()
+    except FileNotFoundError:
+        existing = ""
+
+    if README_START in existing and README_END in existing:
+        updated = README_SECTION_RE.sub(lambda _: block, existing, count=1)
+    elif existing.strip():
+        # Keep what is there; add the section after a blank-line separator.
+        updated = existing.rstrip("\n") + "\n\n" + block + "\n"
+    else:
+        updated = block + "\n"
+
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(
-            "<picture>\n"
-            f'  <source media="(prefers-color-scheme: dark)" '
-            f'srcset="{dark_rel}">\n'
-            f'  <img alt="Contribution graph" src="{light_rel}">\n'
-            "</picture>\n"
-        )
+        fh.write(updated)
 
 
 # --------------------------------------------------------------------------
@@ -585,8 +618,8 @@ def main():
     p.add_argument(
         "--readme",
         metavar="FILE",
-        help="Replace FILE with just the graph (implies --svg "
-        "beside it if --svg is omitted)",
+        help="Write the graph into a marked section of FILE, preserving "
+        "the rest (implies --svg beside it if --svg is omitted)",
     )
     args = p.parse_args()
 
