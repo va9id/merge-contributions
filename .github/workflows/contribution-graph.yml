@@ -1,58 +1,58 @@
 name: Contribution graph
 
 on:
-  schedule:
-    # 04:17 UTC daily. GitHub queues scheduled runs on a best-effort basis,
-    # so the exact minute drifts - that is fine for a once-a-day graph.
-    - cron: "17 4 * * *"
-  workflow_dispatch:
+    schedule:
+        # 04:17 UTC daily. GitHub queues scheduled runs on a best-effort basis,
+        # so the exact minute drifts - that is fine for a once-a-day graph.
+        - cron: "17 4 * * *"
+    workflow_dispatch:
 
 permissions:
-  contents: write
+    contents: write
 
 concurrency:
-  group: contribution-graph
-  cancel-in-progress: false
+    group: contribution-graph
+    cancel-in-progress: false
 
 jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    update:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
 
-      - name: Render the graph
-        env:
-          # The account that owns this repo - no need to hard-code it.
-          GH_USER: ${{ github.repository_owner }}
-          GL_USER: ${{ secrets.GITLAB_USERNAME }}
-        run: |
-          set -euo pipefail
-          if [ -n "${GL_USER:-}" ]; then
-            python contrib_merge.py \
-              --github "${GH_USER}" \
-              --gitlab "${GL_USER}" \
-              --readme README.md
-          else
-            echo "GITLAB_USERNAME secret is not set - GitHub only." >&2
-            python contrib_merge.py \
-              --github "${GH_USER}" \
-              --readme README.md
-          fi
+            - name: Render the graph
+              env:
+                  # The account that owns this repo - no need to hard-code it.
+                  GH_USER: ${{ github.repository_owner }}
+                  GL_USER: ${{ secrets.GITLAB_USERNAME }}
+              run: |
+                  set -euo pipefail
+                  if [ -n "${GL_USER:-}" ]; then
+                    python merge_contributions.py \
+                      --github "${GH_USER}" \
+                      --gitlab "${GL_USER}" \
+                      --readme README.md
+                  else
+                    echo "GITLAB_USERNAME secret is not set - GitHub only." >&2
+                    python merge_contributions.py \
+                      --github "${GH_USER}" \
+                      --readme README.md
+                  fi
 
-      - name: Commit if the graph changed
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md contributions.svg contributions-dark.svg
-          if git diff --staged --quiet; then
-            echo "No change today."
-          else
-            git commit -m "Update contribution graph"
-            git push
-          fi
+            - name: Commit if the graph changed
+              run: |
+                  set -euo pipefail
+                  git config user.name "github-actions[bot]"
+                  git config user.email \
+                    "41898282+github-actions[bot]@users.noreply.github.com"
+                  git add README.md contributions.svg contributions-dark.svg
+                  if git diff --staged --quiet; then
+                    echo "No change today."
+                  else
+                    git commit -m "Update contribution graph"
+                    git push
+                  fi

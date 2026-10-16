@@ -3,10 +3,10 @@
 Combine the last year of contributions from a GitHub and a GitLab profile.
 
 Usage:
-    python3 contrib_merge.py --github octocat --gitlab johndoe
-    python3 contrib_merge.py --github octocat --gitlab johndoe --json out.json
-    python3 contrib_merge.py --github octocat --gitlab johndoe --csv out.csv
-    python3 contrib_merge.py --github octocat --gitlab johndoe --readme README.md
+    python3 merge_contributions.py --github octocat --gitlab johndoe
+    python3 merge_contributions.py --github octocat --gitlab johndoe --json out.json
+    python3 merge_contributions.py --github octocat --gitlab johndoe --csv out.csv
+    python3 merge_contributions.py --github octocat --gitlab johndoe --readme README.md
 
     --svg writes a GitHub-style SVG calendar (plus a -dark.svg sibling);
     --readme writes that pair next to the README and replaces the README
@@ -49,6 +49,7 @@ TIMEOUT = 30
 # HTTP helper
 # --------------------------------------------------------------------------
 
+
 def http(url, data=None, headers=None, method=None):
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("User-Agent", UA)
@@ -62,8 +63,9 @@ def http(url, data=None, headers=None, method=None):
         body = e.read().decode("utf-8", errors="replace")
         body = re.sub(r"<[^>]+>", " ", body)
         body = re.sub(r"\s+", " ", body).strip()[:120]
-        raise RuntimeError(f"HTTP {e.code} from {url}"
-                           + (f" - {body}" if body else "")) from None
+        raise RuntimeError(
+            f"HTTP {e.code} from {url}" + (f" - {body}" if body else "")
+        ) from None
     except urllib.error.URLError as e:
         raise RuntimeError(f"Could not reach {url}: {e.reason}") from None
 
@@ -87,14 +89,16 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 
 
 def github_graphql(username, token, start, end):
-    payload = json.dumps({
-        "query": GQL,
-        "variables": {
-            "login": username,
-            "from": f"{start.isoformat()}T00:00:00Z",
-            "to": f"{end.isoformat()}T23:59:59Z",
-        },
-    }).encode()
+    payload = json.dumps(
+        {
+            "query": GQL,
+            "variables": {
+                "login": username,
+                "from": f"{start.isoformat()}T00:00:00Z",
+                "to": f"{end.isoformat()}T23:59:59Z",
+            },
+        }
+    ).encode()
 
     raw = http(
         "https://api.github.com/graphql",
@@ -125,25 +129,30 @@ def github_graphql(username, token, start, end):
 # The public fragment renders one <td> per day carrying an id + data-date,
 # with the human-readable count in a <tool-tip for="<that id>"> element.
 TD_RE = re.compile(
-    r'<td[^>]*?id="([^"]+)"[^>]*?data-date="(\d{4}-\d{2}-\d{2})"[^>]*>', re.I)
+    r'<td[^>]*?id="([^"]+)"[^>]*?data-date="(\d{4}-\d{2}-\d{2})"[^>]*>', re.I
+)
 TD_RE_ALT = re.compile(
-    r'<td[^>]*?data-date="(\d{4}-\d{2}-\d{2})"[^>]*?id="([^"]+)"[^>]*>', re.I)
-TIP_RE = re.compile(
-    r'<tool-tip[^>]*?for="([^"]+)"[^>]*>(.*?)</tool-tip>', re.I | re.S)
+    r'<td[^>]*?data-date="(\d{4}-\d{2}-\d{2})"[^>]*?id="([^"]+)"[^>]*>', re.I
+)
+TIP_RE = re.compile(r'<tool-tip[^>]*?for="([^"]+)"[^>]*>(.*?)</tool-tip>', re.I | re.S)
 LEVEL_RE = re.compile(
-    r'<td[^>]*?data-date="(\d{4}-\d{2}-\d{2})"[^>]*?data-level="(\d+)"[^>]*>', re.I)
+    r'<td[^>]*?data-date="(\d{4}-\d{2}-\d{2})"[^>]*?data-level="(\d+)"[^>]*>', re.I
+)
 
 
 def github_scrape(username, start, end):
-    url = ("https://github.com/users/"
-           f"{urllib.parse.quote(username)}/contributions"
-           f"?from={start.isoformat()}&to={end.isoformat()}")
+    url = (
+        "https://github.com/users/"
+        f"{urllib.parse.quote(username)}/contributions"
+        f"?from={start.isoformat()}&to={end.isoformat()}"
+    )
     html = http(url, headers={"X-Requested-With": "XMLHttpRequest"})
 
     if "data-date" not in html:
         raise RuntimeError(
             f"No contribution data in GitHub response for '{username}' "
-            "(user may not exist, or the page markup changed)")
+            "(user may not exist, or the page markup changed)"
+        )
 
     id_to_date = {}
     for m in TD_RE.finditer(html):
@@ -169,8 +178,11 @@ def github_scrape(username, start, end):
         for m in LEVEL_RE.finditer(html):
             counts[m.group(1)] = int(m.group(2))
         if counts:
-            print("! GitHub: approximate counts (0-4 buckets). Set "
-                  "GITHUB_TOKEN for exact numbers.", file=sys.stderr)
+            print(
+                "! GitHub: approximate counts (0-4 buckets). Set "
+                "GITHUB_TOKEN for exact numbers.",
+                file=sys.stderr,
+            )
 
     return counts
 
@@ -186,6 +198,7 @@ def fetch_github(username, start, end):
 # GitLab
 # --------------------------------------------------------------------------
 
+
 def fetch_gitlab(username, host="https://gitlab.com"):
     url = f"{host.rstrip('/')}/users/{urllib.parse.quote(username)}/calendar.json"
     raw = http(url, headers={"Accept": "application/json"})
@@ -194,7 +207,8 @@ def fetch_gitlab(username, host="https://gitlab.com"):
     except json.JSONDecodeError:
         raise RuntimeError(
             f"GitLab returned non-JSON for '{username}' - the profile may be "
-            "private or the username wrong.") from None
+            "private or the username wrong."
+        ) from None
 
     if not isinstance(doc, dict):
         raise RuntimeError(f"Unexpected GitLab payload shape: {type(doc).__name__}")
@@ -206,6 +220,7 @@ def fetch_gitlab(username, host="https://gitlab.com"):
 # --------------------------------------------------------------------------
 # Merge + render
 # --------------------------------------------------------------------------
+
 
 def merge(sources, start, end):
     """sources: {label: {date_str: count}} -> ordered list of per-day rows."""
@@ -219,17 +234,31 @@ def merge(sources, start, end):
     while day <= end:
         key = day.isoformat()
         per_source = {label: totals[key].get(label, 0) for label in sources}
-        rows.append({
-            "date": key,
-            **per_source,
-            "total": sum(per_source.values()),
-        })
+        rows.append(
+            {
+                "date": key,
+                **per_source,
+                "total": sum(per_source.values()),
+            }
+        )
         day += dt.timedelta(days=1)
     return rows
 
 
-MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+]
 
 
 def level(count, peak):
@@ -290,43 +319,65 @@ THEMES = {
 # orange, which stays legible on both backgrounds.
 ICONS = {
     "github": "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 "
-        "11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.7"
-        "24-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 "
-        "17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838"
-        " 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-"
-        "1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 "
-        "1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 "
-        "1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 "
-        "2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 "
-        "3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 "
-        "5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 "
-        ".315.21.69.825.57C20.565 22.092 24 17.592 24 "
-        "12.297c0-6.627-5.373-12-12-12",
+    "11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.7"
+    "24-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 "
+    "17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838"
+    " 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-"
+    "1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 "
+    "1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 "
+    "1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 "
+    "2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 "
+    "3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 "
+    "5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 "
+    ".315.21.69.825.57C20.565 22.092 24 17.592 24 "
+    "12.297c0-6.627-5.373-12-12-12",
     "gitlab": "m23.6004 9.5927-.0337-.0862L20.3.9814a.851.851 0 0 "
-        "0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 "
-        "0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 "
-        "0-.29-.4412.8748.8748 0 0 0-.9997-.0537.8585.8585 0 0 "
-        "0-.3362.4049L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 "
-        "2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 "
-        "1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 "
-        "2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 "
-        "2.0094-7.003z",
+    "0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 "
+    "0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 "
+    "0-.29-.4412.8748.8748 0 0 0-.9997-.0537.8585.8585 0 0 "
+    "0-.3362.4049L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 "
+    "2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 "
+    "1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 "
+    "2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 "
+    "2.0094-7.003z",
 }
 ICON_VIEWBOX = 24
-ICON = 14          # rendered icon edge, px
-ICON_GAP = 6       # icon -> its own label
-BADGE_GAP = 16     # between the two badges
-BRAND_FILL = {"gitlab": "#fc6d26"}   # else the theme's title colour
+ICON = 14  # rendered icon edge, px
+ICON_GAP = 6  # icon -> its own label
+BADGE_GAP = 16  # between the two badges
+BRAND_FILL = {"gitlab": "#fc6d26"}  # else the theme's title colour
 
 # The GitHub badge is labelled with the username; GitLab is fixed.
 GITLAB_LABEL = "Work"
 
 # Approximate Arial/Helvetica advance widths (per 1000 units) - enough to
 # right-align the header badges without measuring real glyphs.
-_ADV = {" ": 278, "i": 222, "j": 222, "l": 222, "t": 278, "f": 278,
-        "r": 333, "I": 278, "J": 500, "k": 500, "s": 500, "z": 500,
-        "c": 500, "m": 833, "w": 722, "W": 944, "M": 833, "O": 778,
-        "G": 778, "P": 667, "D": 722, "A": 667, "L": 556, "K": 667}
+_ADV = {
+    " ": 278,
+    "i": 222,
+    "j": 222,
+    "l": 222,
+    "t": 278,
+    "f": 278,
+    "r": 333,
+    "I": 278,
+    "J": 500,
+    "k": 500,
+    "s": 500,
+    "z": 500,
+    "c": 500,
+    "m": 833,
+    "w": 722,
+    "W": 944,
+    "M": 833,
+    "O": 778,
+    "G": 778,
+    "P": 667,
+    "D": 722,
+    "A": 667,
+    "L": 556,
+    "K": 667,
+}
 
 
 def text_width(s, size):
@@ -334,20 +385,24 @@ def text_width(s, size):
     return sum(_ADV.get(ch, 556) for ch in s) * size / 1000.0
 
 
-CELL = 11          # square edge, px
-GAP = 3            # space between squares
+CELL = 11  # square edge, px
+GAP = 3  # space between squares
 PITCH = CELL + GAP
-PANEL_PAD = 16     # breathing room inside the panel border
-WEEKDAY_W = 30     # left gutter for the Mon/Wed/Fri labels
-TITLE_H = 24       # the "N contributions" headline
-MONTH_H = 16       # the month ruler
-FONT = ("-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,"
-        "sans-serif")
+PANEL_PAD = 16  # breathing room inside the panel border
+WEEKDAY_W = 30  # left gutter for the Mon/Wed/Fri labels
+TITLE_H = 24  # the "N contributions" headline
+MONTH_H = 16  # the month ruler
+FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial," "sans-serif"
 
 
 def esc(s):
-    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
-            .replace(">", "&gt;").replace('"', "&quot;"))
+    return (
+        str(s)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 def svg_calendar(rows, labels, theme="light"):
@@ -367,20 +422,17 @@ def svg_calendar(rows, labels, theme="light"):
     grid_bottom = grid_y + 7 * PITCH - GAP
     height = grid_bottom + 8 + CELL + PANEL_PAD
 
-    span = ("the last year" if 360 <= len(rows) <= 372
-            else f"the last {len(rows)} days")
+    span = "the last year" if 360 <= len(rows) <= 372 else f"the last {len(rows)} days"
     headline = f"{total:,} contributions in {span}"
 
     # Header badges, right-aligned on the headline's baseline.
     badges = [s for s in labels if s in ICONS]
-    badge_w = sum(ICON + ICON_GAP + text_width(labels[s], 12)
-                  for s in badges)
+    badge_w = sum(ICON + ICON_GAP + text_width(labels[s], 12) for s in badges)
     if badges:
         badge_w += BADGE_GAP * (len(badges) - 1)
 
     # A short window must still leave the headline and badges room.
-    header_w = (PANEL_PAD + text_width(headline, 13) + 24
-                + badge_w + PANEL_PAD)
+    header_w = PANEL_PAD + text_width(headline, 13) + 24 + badge_w + PANEL_PAD
     width = max(grid_x + grid_w + PANEL_PAD, int(header_w + 0.5))
 
     o = [
@@ -399,13 +451,17 @@ def svg_calendar(rows, labels, theme="light"):
     for s in badges:
         label = labels[s]
         scale = ICON / ICON_VIEWBOX
-        o.append(f'<g transform="translate({bx:.1f},{PANEL_PAD}) '
-                 f'scale({scale:.4f})" fill="'
-                 f'{BRAND_FILL.get(s, t["title"])}">'
-                 f'<path d="{ICONS[s]}"/></g>')
-        o.append(f'<text x="{bx + ICON + ICON_GAP:.1f}" '
-                 f'y="{PANEL_PAD + 12}" fill="{t["title"]}">'
-                 f'{esc(label)}</text>')
+        o.append(
+            f'<g transform="translate({bx:.1f},{PANEL_PAD}) '
+            f'scale({scale:.4f})" fill="'
+            f'{BRAND_FILL.get(s, t["title"])}">'
+            f'<path d="{ICONS[s]}"/></g>'
+        )
+        o.append(
+            f'<text x="{bx + ICON + ICON_GAP:.1f}" '
+            f'y="{PANEL_PAD + 12}" fill="{t["title"]}">'
+            f"{esc(label)}</text>"
+        )
         bx += ICON + ICON_GAP + text_width(label, 12) + BADGE_GAP
 
     o.append(f'<g fill="{t["muted"]}" font-size="10">')
@@ -420,8 +476,9 @@ def svg_calendar(rows, labels, theme="light"):
         if month != seen:
             if w_idx < len(weeks) - 2:  # no cramped label at the edge
                 x = grid_x + w_idx * PITCH
-                o.append(f'<text x="{x}" y="{grid_y - 5}">'
-                         f'{MONTHS[month - 1]}</text>')
+                o.append(
+                    f'<text x="{x}" y="{grid_y - 5}">' f"{MONTHS[month - 1]}</text>"
+                )
             seen = month
 
     # Weekday labels (GitHub shows only Mon/Wed/Fri).
@@ -437,17 +494,17 @@ def svg_calendar(rows, labels, theme="light"):
     # header wider than the calendar itself.
     more_x = width - PANEL_PAD
     swatch_x = more_x - 30 - swatches_w
-    o.append(f'<text x="{swatch_x - 6}" y="{text_y}" '
-             f'text-anchor="end">Less</text>')
-    o.append(f'<text x="{more_x}" y="{text_y}" '
-             f'text-anchor="end">More</text>')
+    o.append(f'<text x="{swatch_x - 6}" y="{text_y}" ' f'text-anchor="end">Less</text>')
+    o.append(f'<text x="{more_x}" y="{text_y}" ' f'text-anchor="end">More</text>')
     o.append("</g>")
 
     for i, colour in enumerate(t["scale"]):
         x = swatch_x + i * PITCH
-        o.append(f'<rect x="{x}" y="{legend_y}" width="{CELL}" '
-                 f'height="{CELL}" rx="2" ry="2" fill="{colour}" '
-                 f'stroke="{t["cell_stroke"]}"/>')
+        o.append(
+            f'<rect x="{x}" y="{legend_y}" width="{CELL}" '
+            f'height="{CELL}" rx="2" ry="2" fill="{colour}" '
+            f'stroke="{t["cell_stroke"]}"/>'
+        )
 
     # Day squares.
     for w_idx, col in enumerate(weeks):
@@ -464,7 +521,8 @@ def svg_calendar(rows, labels, theme="light"):
                 f'rx="2" ry="2" fill="{fill}" '
                 f'stroke="{t["cell_stroke"]}"><title>'
                 + esc(f"{count} {word} on {date.isoformat()}")
-                + "</title></rect>")
+                + "</title></rect>"
+            )
 
     o.append("</g>")
     o.append("</svg>")
@@ -485,12 +543,14 @@ def write_readme(path, light_rel, dark_rel):
             f'  <source media="(prefers-color-scheme: dark)" '
             f'srcset="{dark_rel}">\n'
             f'  <img alt="Contribution graph" src="{light_rel}">\n'
-            "</picture>\n")
+            "</picture>\n"
+        )
 
 
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
+
 
 def main():
     # Paths and upstream error text can carry characters a default
@@ -502,21 +562,32 @@ def main():
             pass
 
     p = argparse.ArgumentParser(
-        description="Merge the last year of GitHub + GitLab contributions.")
+        description="Merge the last year of GitHub + GitLab contributions."
+    )
     p.add_argument("--github", metavar="USER", help="GitHub username")
     p.add_argument("--gitlab", metavar="USER", help="GitLab username")
-    p.add_argument("--gitlab-host", default="https://gitlab.com",
-                   help="Self-hosted GitLab base URL (default: gitlab.com)")
-    p.add_argument("--days", type=int, default=365,
-                   help="Window size ending today (default: 365)")
+    p.add_argument(
+        "--gitlab-host",
+        default="https://gitlab.com",
+        help="Self-hosted GitLab base URL (default: gitlab.com)",
+    )
+    p.add_argument(
+        "--days", type=int, default=365, help="Window size ending today (default: 365)"
+    )
     p.add_argument("--json", metavar="FILE", help="Write merged data as JSON")
     p.add_argument("--csv", metavar="FILE", help="Write merged data as CSV")
-    p.add_argument("--svg", metavar="FILE",
-                   help="Write a GitHub-style SVG calendar (a dark variant "
-                        "goes next to it as FILE-dark.svg)")
-    p.add_argument("--readme", metavar="FILE",
-                   help="Replace FILE with just the graph (implies --svg "
-                        "beside it if --svg is omitted)")
+    p.add_argument(
+        "--svg",
+        metavar="FILE",
+        help="Write a GitHub-style SVG calendar (a dark variant "
+        "goes next to it as FILE-dark.svg)",
+    )
+    p.add_argument(
+        "--readme",
+        metavar="FILE",
+        help="Replace FILE with just the graph (implies --svg "
+        "beside it if --svg is omitted)",
+    )
     args = p.parse_args()
 
     if not args.github and not args.gitlab:
@@ -553,21 +624,25 @@ def main():
     svg_path = args.svg
     if args.readme and not svg_path:
         svg_path = os.path.join(
-            os.path.dirname(os.path.abspath(args.readme)), "contributions.svg")
+            os.path.dirname(os.path.abspath(args.readme)), "contributions.svg"
+        )
 
     try:
         if args.json:
             with open(args.json, "w") as fh:
-                json.dump({
-                    "window": {"start": start.isoformat(),
-                               "end": end.isoformat()},
-                    "sources": {"github": args.github, "gitlab": args.gitlab},
-                    "totals": {
-                        "all": sum(r["total"] for r in rows),
-                        **{k: sum(r[k] for r in rows) for k in sources},
+                json.dump(
+                    {
+                        "window": {"start": start.isoformat(), "end": end.isoformat()},
+                        "sources": {"github": args.github, "gitlab": args.gitlab},
+                        "totals": {
+                            "all": sum(r["total"] for r in rows),
+                            **{k: sum(r[k] for r in rows) for k in sources},
+                        },
+                        "days": rows,
                     },
-                    "days": rows,
-                }, fh, indent=2)
+                    fh,
+                    indent=2,
+                )
 
         if args.csv:
             with open(args.csv, "w", newline="") as fh:
@@ -578,8 +653,7 @@ def main():
         if svg_path:
             names = {"github": args.github, "gitlab": GITLAB_LABEL}
             labels = {s: names[s] for s in sources}
-            for path, theme in ((svg_path, "light"),
-                                (dark_sibling(svg_path), "dark")):
+            for path, theme in ((svg_path, "light"), (dark_sibling(svg_path), "dark")):
                 with open(path, "w", encoding="utf-8", newline="\n") as fh:
                     fh.write(svg_calendar(rows, labels, theme))
 
@@ -589,8 +663,7 @@ def main():
             def rel(p):
                 return os.path.relpath(p, base).replace(os.sep, "/")
 
-            write_readme(args.readme, rel(svg_path),
-                         rel(dark_sibling(svg_path)))
+            write_readme(args.readme, rel(svg_path), rel(dark_sibling(svg_path)))
     except OSError as e:
         print(f"! nothing written: {e}", file=sys.stderr)
         sys.exit(1)
