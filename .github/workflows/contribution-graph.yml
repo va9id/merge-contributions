@@ -4,7 +4,7 @@ on:
     schedule:
         # 04:17 UTC daily. GitHub queues scheduled runs on a best-effort basis,
         # so the exact minute drifts - that is fine for a once-a-day graph.
-        - cron: "17 4 * * *"
+        - cron: "17 4 * * 1"
     workflow_dispatch:
 
 permissions:
